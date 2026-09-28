@@ -291,7 +291,7 @@ sc_app_server <- function(input, output, session) {
     rv$job <- sc_run_conversion_async(
       source = rv$source, target_id = rv$target_id, dest_path = rv$dest,
       assay = assay, standardize = isTRUE(input$standardize),
-      backend = caps$backend
+      source_id = rv$source_id, backend = caps$backend
     )
   })
 

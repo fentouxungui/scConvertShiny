@@ -75,8 +75,8 @@ sc_app_ui <- function(request) {
               width = 12, status = "primary", solidHeader = TRUE,
               title = "3. Convert & download",
               shiny::uiOutput("status_ui"),
-              shiny::verbatimTextOutput("log_output"),
               shiny::uiOutput("download_ui"),
+              shiny::verbatimTextOutput("log_output"),
               shiny::hr(),
               shiny::uiOutput("report_ui")
             )

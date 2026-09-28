@@ -12,6 +12,7 @@ sc_convert(
   overwrite = TRUE,
   standardize = FALSE,
   verbose = TRUE,
+  source_id = NULL,
   backend = getOption("scConvertShiny.backend", "scConvert"),
   ...
 )
@@ -30,6 +31,9 @@ sc_convert(
 \item{standardize}{Standardise metadata column names when writing h5ad.}
 
 \item{verbose}{Emit progress messages.}
+
+\item{source_id}{Optional source format id; detected from \code{source} when
+\code{NULL}. Used by the hub fallback.}
 
 \item{backend}{\code{"scConvert"} (default) or \code{"stub"} for testing.}
 

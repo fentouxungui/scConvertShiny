@@ -6,7 +6,7 @@
 
 #' Conversion worker executed in the background process
 #' @noRd
-sc_conversion_worker <- function(source, target_id, dest_path, assay,
+sc_conversion_worker <- function(source, source_id, target_id, dest_path, assay,
                                  standardize, verbose, backend) {
   tryCatch({
     if (identical(backend, "stub")) {
@@ -30,6 +30,7 @@ sc_conversion_worker <- function(source, target_id, dest_path, assay,
     if (!requireNamespace("scConvert", quietly = TRUE)) {
       stop("scConvert is not installed", call. = FALSE)
     }
+
     if (identical(target_id, "sce")) {
       if (!requireNamespace("SingleCellExperiment", quietly = TRUE)) {
         stop("SingleCellExperiment is not installed", call. = FALSE)
@@ -39,11 +40,57 @@ sc_conversion_worker <- function(source, target_id, dest_path, assay,
         verbose = verbose, standardize = standardize
       )
       saveRDS(obj, dest_path)
-    } else {
-      scConvert::scConvert(
-        source, dest = dest_path, assay = assay, overwrite = TRUE,
-        verbose = verbose, standardize = standardize
-      )
+      return(list(ok = TRUE, message = "conversion complete", dest = dest_path))
+    }
+
+    if (is.null(source_id) || !nzchar(source_id)) {
+      source_id <- scConvert:::FileType(source)
+    }
+
+    # SOMA / SpatialData sources need an explicit load: their registered
+    # loaders do not match HubConvert's `file =` call, so they fail with
+    # "argument \"source\" is missing" rather than "unused argument".
+    if (source_id %in% c("soma", "spatialdata.zarr")) {
+      obj <- if (identical(source_id, "soma")) {
+        scConvert::readSOMA(source, measurement = assay, verbose = verbose)
+      } else {
+        scConvert::readSpatialData(source, verbose = verbose)
+      }
+      if (identical(target_id, "sce")) {
+        if (!requireNamespace("SingleCellExperiment", quietly = TRUE)) {
+          stop("SingleCellExperiment is not installed", call. = FALSE)
+        }
+        saveRDS(scConvert::scConvert(obj, dest = "sce", verbose = verbose), dest_path)
+      } else {
+        scConvert::scConvert(obj, dest = dest_path, overwrite = TRUE, verbose = verbose)
+      }
+      return(list(ok = TRUE, message = "conversion complete", dest = dest_path))
+    }
+    # `standardize` is only meaningful for h5ad output and is not accepted by
+    # every direct-path converter; pass it only for h5ad targets.
+    pass_standardize <- target_id %in% c("h5ad", "h5ad_spatial")
+    ok <- tryCatch({
+      if (pass_standardize) {
+        scConvert::scConvert(source, dest = dest_path, assay = assay,
+                             overwrite = TRUE, verbose = verbose,
+                             standardize = standardize)
+      } else {
+        scConvert::scConvert(source, dest = dest_path, assay = assay,
+                             overwrite = TRUE, verbose = verbose)
+      }
+      TRUE
+    }, error = function(e) {
+      if (!grepl("unused argument", conditionMessage(e), fixed = TRUE)) stop(e)
+      FALSE
+    })
+
+    if (!isTRUE(ok)) {
+      # Fall back to scConvert's Seurat-hub path, which passes `assay` only to
+      # the registered loader and never to a direct-path converter.
+      stype <- if (identical(source_id, "h5ad_spatial")) "h5ad" else source_id
+      hub <- get("HubConvert", envir = asNamespace("scConvert"))
+      hub(source_file = source, dest_file = dest_path, stype = stype,
+          dtype = target_id, assay = assay, overwrite = TRUE, verbose = verbose)
     }
     list(ok = TRUE, message = "conversion complete", dest = dest_path)
   }, error = function(e) {
@@ -59,6 +106,7 @@ sc_conversion_worker <- function(source, target_id, dest_path, assay,
 #' @export
 sc_run_conversion_async <- function(source, target_id, dest_path, assay = "RNA",
                                     standardize = FALSE, verbose = TRUE,
+                                    source_id = NULL,
                                     backend = getOption("scConvertShiny.backend", "scConvert"),
                                     log_path = NULL) {
   if (is.null(log_path)) {
@@ -71,9 +119,9 @@ sc_run_conversion_async <- function(source, target_id, dest_path, assay = "RNA",
   proc <- callr::r_bg(
     func = worker,
     args = list(
-      source = source, target_id = target_id, dest_path = dest_path,
-      assay = assay, standardize = standardize, verbose = verbose,
-      backend = backend
+      source = source, source_id = source_id, target_id = target_id,
+      dest_path = dest_path, assay = assay, standardize = standardize,
+      verbose = verbose, backend = backend
     ),
     supervise = TRUE,
     poll_connection = FALSE,
