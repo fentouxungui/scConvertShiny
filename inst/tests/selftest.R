@@ -10,9 +10,9 @@ suppressMessages({
     candidates <- c("R", "../../R", "scConvertShiny/R")
     rdir <- candidates[file.exists(file.path(candidates, "formats.R"))][1]
     if (is.na(rdir)) {
-      stop("找不到 scConvertShiny：请先安装，或在包根目录下运行本脚本。")
+      stop("scConvertShiny not found: install it, or run this script from the package root.")
     }
-    message("从源码目录加载: ", rdir)
+    message("Loading from source directory: ", rdir)
     for (f in list.files(rdir, pattern = "\\.R$", full.names = TRUE)) source(f)
   } else {
     library(scConvertShiny)
@@ -93,7 +93,7 @@ check("report renders", {
     target_label = "h5Seurat (.h5Seurat)", assay = "RNA", backend = "stub",
     elapsed = 1.23, dest = "a.h5Seurat", output_size = "1.00 KB"
   ))
-  stopifnot(grepl("转换报告", rep), grepl("成功", rep))
+  stopifnot(grepl("Conversion report", rep), grepl("success", rep))
 })
 
 check("shiny app object constructs", {
@@ -116,7 +116,7 @@ check("demo preparation (network optional)", {
     error = function(e) NULL
   )
   if (is.null(res)) {
-    cat("  [info] 跳过：无网络，无法下载示例数据\n")
+    cat("  [info] skipped: no network, cannot download demo data\n")
   } else {
     stopifnot(file.exists(res$path))
   }
@@ -132,7 +132,7 @@ check("upload limit defaults to 20 GB and guards oversize", {
     sc_prepare_input(upload = f, upload_name = "a.h5ad", max_upload_mb = 1e-6),
     error = function(e) conditionMessage(e)
   )
-  stopifnot(is.character(err), grepl("超过上限", err))
+  stopifnot(is.character(err), grepl("exceeding", err))
 })
 
 check("targets exclude the source's own format", {
@@ -158,11 +158,11 @@ check("assay defaults per format", {
   stopifnot(sc_detect_assays(NA, "unknown_fmt")$default == "RNA")
 })
 
-cat("\n================ 汇总 ================\n")
+cat("\n================ Summary ================\n")
 fails <- results[grepl("^FAIL", results)]
 cat(sprintf("PASS: %d / %d\n", length(results) - length(fails), length(results)))
 if (length(fails)) {
-  cat("失败项:\n"); print(names(fails))
+  cat("Failures:\n"); print(names(fails))
   stop(sprintf("self-test: %d failure(s)", length(fails)), call. = FALSE)
 }
-cat("全部通过。\n")
+cat("All checks passed.\n")

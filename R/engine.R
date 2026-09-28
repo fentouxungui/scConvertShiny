@@ -28,11 +28,11 @@ sc_conversion_worker <- function(source, target_id, dest_path, assay,
     }
 
     if (!requireNamespace("scConvert", quietly = TRUE)) {
-      stop("scConvert 未安装", call. = FALSE)
+      stop("scConvert is not installed", call. = FALSE)
     }
     if (identical(target_id, "sce")) {
       if (!requireNamespace("SingleCellExperiment", quietly = TRUE)) {
-        stop("SingleCellExperiment 未安装", call. = FALSE)
+        stop("SingleCellExperiment is not installed", call. = FALSE)
       }
       obj <- scConvert::scConvert(
         source, dest = "sce", assay = assay,

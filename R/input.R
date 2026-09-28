@@ -33,17 +33,17 @@ sc_prepare_input <- function(upload = NULL, path = NULL, upload_name = NULL,
   cleanup <- character(0)
 
   if (!is.null(upload) && nzchar(upload)) {
-    if (!file.exists(upload)) stop("上传的临时文件不存在。", call. = FALSE)
+    if (!file.exists(upload)) stop("The uploaded temporary file was not found.", call. = FALSE)
     size_mb <- file.info(upload)$size / 1024^2
     if (!is.na(size_mb) && size_mb > max_upload_mb) {
       stop(sprintf(
-        "上传文件约 %.0f MB，超过上限 %d MB；请改用本地路径模式。",
+        "Uploaded file is about %.0f MB, exceeding the %d MB limit; please use the local-path mode.",
         size_mb, as.integer(max_upload_mb)
       ), call. = FALSE)
     }
     staged <- file.path(dest_dir, upload_name %||% basename(upload))
     if (!file.copy(upload, staged, overwrite = TRUE)) {
-      stop("无法暂存上传文件。", call. = FALSE)
+      stop("Could not stage the uploaded file.", call. = FALSE)
     }
     cleanup <- c(cleanup, staged)
 
@@ -65,10 +65,10 @@ sc_prepare_input <- function(upload = NULL, path = NULL, upload_name = NULL,
   if (!is.null(path) && nzchar(path)) {
     p <- trimws(path)
     if (!grepl("://", p) && !file.exists(p) && !dir.exists(p)) {
-      stop("路径不存在: ", p, call. = FALSE)
+      stop("Path not found: ", p, call. = FALSE)
     }
     return(list(path = p, origin = "path", cleanup = character(0)))
   }
 
-  stop("未提供输入文件或路径。", call. = FALSE)
+  stop("No input file or path was provided.", call. = FALSE)
 }

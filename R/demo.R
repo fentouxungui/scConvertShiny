@@ -29,7 +29,7 @@ sc_demo_data <- function() {
       "PBMC 500 cells — RDS (.rds)",
       "PBMC small — AnnData (.h5ad)",
       "PBMC small — RDS (.rds)",
-      "Zarr（由 pbmc_demo.h5ad 生成）"
+      "Zarr (generated from pbmc_demo.h5ad)"
     ),
     format_id = c(
       "h5ad", "h5ad_spatial", "h5seurat", "loom", "h5mu", "rds",
@@ -77,7 +77,7 @@ sc_demo_local_path <- function(repo_path) {
 sc_demo_prepare <- function(id, dest_dir = tempdir(), caps = sc_capabilities()) {
   d <- sc_demo_data()
   row <- d[match(id, d$id), , drop = FALSE]
-  if (nrow(row) == 0) stop("未知示例数据: ", id, call. = FALSE)
+  if (nrow(row) == 0) stop("Unknown demo dataset: ", id, call. = FALSE)
 
   if (identical(row$type[1], "derived")) {
     return(sc_demo_derive(row$id[1], row$base_id[1], row$format_id[1], dest_dir, caps))
@@ -87,7 +87,7 @@ sc_demo_prepare <- function(id, dest_dir = tempdir(), caps = sc_capabilities()) 
   local <- sc_demo_local_path(row$repo_path[1])
   if (!is.null(local)) {
     if (!file.copy(local, dest, overwrite = TRUE)) {
-      stop("无法复制本地示例文件。", call. = FALSE)
+      stop("Could not copy the local demo file.", call. = FALSE)
     }
   } else {
     url <- paste0(.sc_demo_base_url, "/", row$repo_path[1])
@@ -98,8 +98,8 @@ sc_demo_prepare <- function(id, dest_dir = tempdir(), caps = sc_capabilities()) 
     }, error = function(e) NULL)
     if (!isTRUE(ok)) {
       stop(
-        "示例数据下载失败（需要联网访问 GitHub）。",
-        "可改用“本地路径”模式手动选择文件，或先安装 scConvert 使用其内置示例。",
+        "Failed to download the demo data (network access to GitHub is required). ",
+        "Use the local-path mode to pick a file manually, or install scConvert to use its bundled demos.",
         call. = FALSE
       )
     }
@@ -114,7 +114,7 @@ sc_demo_prepare <- function(id, dest_dir = tempdir(), caps = sc_capabilities()) 
 #' @noRd
 sc_demo_derive <- function(id, base_id, format_id, dest_dir, caps = sc_capabilities()) {
   if (!sc_backend_ready(caps)) {
-    stop("生成派生示例（如 Zarr）需要 scConvert。", call. = FALSE)
+    stop("Generating a derived demo (e.g. Zarr) requires scConvert.", call. = FALSE)
   }
   base <- sc_demo_prepare(base_id, dest_dir = dest_dir, caps = caps)
   dest <- file.path(dest_dir, paste0("demo_", gsub("\\.", "_", format_id), ".zarr"))
@@ -122,6 +122,6 @@ sc_demo_derive <- function(id, base_id, format_id, dest_dir, caps = sc_capabilit
   sc_convert(base$path, format_id, dest, backend = caps$backend, verbose = FALSE)
   list(
     path = dest, cleanup = c(base$cleanup, dest), origin = "demo",
-    label = paste0("派生示例: ", format_id), format_id = format_id, demo_id = id
+    label = paste0("Derived demo: ", format_id), format_id = format_id, demo_id = id
   )
 }

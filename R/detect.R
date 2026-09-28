@@ -68,7 +68,7 @@ sc_detect_input <- function(path, check_exists = TRUE) {
   list(
     path = path,
     id = id,
-    label = if (nrow(row)) row$label[1] else "未知格式",
+    label = if (nrow(row)) row$label[1] else "Unknown format",
     kind = if (nrow(row)) row$kind[1] else NA_character_,
     can_read = if (nrow(row)) isTRUE(row$can_read[1]) else FALSE,
     recognized = nrow(row) == 1 && !is.na(id),

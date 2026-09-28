@@ -25,19 +25,19 @@ sc_app_server <- function(input, output, session) {
 
   output$about_ui <- shiny::renderUI({
     caps <- sc_capabilities()
-    ver <- if (is.na(caps$scConvertVersion)) "未安装" else caps$scConvertVersion
+    ver <- if (is.na(caps$scConvertVersion)) "not installed" else caps$scConvertVersion
     shiny::HTML(paste0(
-      "<p>本应用把 <code>scConvert</code> 的格式转换能力封装为向导式界面。</p>",
-      "<p><b>当前环境</b><br>",
-      "后端: <code>", caps$backend, "</code><br>",
+      "<p>This app wraps the format-conversion capabilities of <code>scConvert</code> in a wizard-style interface.</p>",
+      "<p><b>Current environment</b><br>",
+      "Backend: <code>", caps$backend, "</code><br>",
       "scConvert: ", ver, "<br>",
       "Seurat: ", caps$Seurat, " &nbsp; SingleCellExperiment: ", caps$SingleCellExperiment,
       "</p>",
-      "<p><b>安装 scConvert</b>（需要 C 工具链：Windows 装 Rtools，Linux 装 build-essential）<br>",
+      "<p><b>Installing scConvert</b> (requires a C toolchain: Rtools on Windows, build-essential on Linux)<br>",
       "<code>source(system.file('install','install_scConvert.R', package='scConvertShiny'))</code><br>",
-      "验证：<code>source(system.file('install','verify_scConvert.R', package='scConvertShiny'))</code></p>",
-      "<p><b>说明</b>：转换经由 Seurat 中枢；h5ad &lt;-&gt; h5Seurat 有直接 HDF5 路径加速。",
-      "目录型输出（zarr / spatialdata / soma）下载时会自动打包为 zip。</p>"
+      "Verify: <code>source(system.file('install','verify_scConvert.R', package='scConvertShiny'))</code></p>",
+      "<p><b>Notes</b>: conversions route through the Seurat hub; h5ad &lt;-&gt; h5Seurat uses a direct HDF5 path for speed. ",
+      "Directory outputs (zarr / spatialdata / soma) are zipped automatically on download.</p>"
     ))
   })
 
@@ -78,33 +78,33 @@ sc_app_server <- function(input, output, session) {
       msgs <- c(msgs, list(shiny::div(
         class = "alert alert-warning",
         if (identical(caps$backend, "stub")) {
-          "当前为桩后端（仅用于界面测试）。"
+          "Stub backend active (for interface testing only)."
         } else {
-          "未检测到 scConvert：可查看格式矩阵，但无法执行真实转换，请到“关于 / 安装”查看安装方式。"
+          "scConvert not detected: you can view the format matrix but cannot run real conversions. See 'About / Install' for setup."
         }
       )))
     }
     if (is.null(d)) {
-      msgs <- c(msgs, list(shiny::helpText("等待选择输入...")))
+      msgs <- c(msgs, list(shiny::helpText("Waiting for input...")))
     } else if (!isTRUE(d$recognized)) {
       msgs <- c(msgs, list(shiny::div(
         class = "alert alert-danger",
-        paste0("无法识别的格式：", basename(d$path))
+        paste0("Unrecognized format: ", basename(d$path))
       )))
     } else if (isFALSE(d$exists)) {
-      msgs <- c(msgs, list(shiny::div(class = "alert alert-danger", "路径不存在。")))
+      msgs <- c(msgs, list(shiny::div(class = "alert alert-danger", "Path does not exist.")))
     } else {
       msgs <- c(msgs, list(shiny::div(
         class = "alert alert-success",
-        paste0("已识别: ", d$label, "（id: ", d$id, "，类型: ", d$kind, "）")
+        paste0("Detected: ", d$label, " (id: ", d$id, ", kind: ", d$kind, ")")
       )))
       if (!is.null(d$demo_id)) {
         ready <- !is.null(rv$demo_path) && identical(rv$demo_id, d$demo_id)
         msgs <- c(msgs, list(shiny::helpText(
           if (ready) {
-            paste0("示例已就绪: ", rv$demo_path)
+            paste0("Demo ready: ", rv$demo_path)
           } else {
-            "点击“加载示例数据”下载/生成，或直接点“开始转换”。"
+            "Click 'Load demo data' to download/generate it, or click 'Start conversion' directly."
           }
         )))
       }
@@ -138,13 +138,13 @@ sc_app_server <- function(input, output, session) {
     info <- assay_info()
     shiny::tagList(
       shiny::selectizeInput(
-        "assay", "Assay 名称",
+        "assay", "Assay name",
         choices = unique(c(info$default, info$assays)),
         selected = info$default,
         options = list(create = TRUE, placeholder = info$default)
       ),
       if (identical(info$source, "detected") && length(info$assays) > 1) {
-        shiny::helpText(paste0("检测到 assay: ", paste(info$assays, collapse = ", ")))
+        shiny::helpText(paste0("Detected assays: ", paste(info$assays, collapse = ", ")))
       }
     )
   })
@@ -152,12 +152,12 @@ sc_app_server <- function(input, output, session) {
   output$convert_btn_ui <- shiny::renderUI({
     if (isTRUE(rv$running)) {
       shiny::actionButton(
-        "convert", "转换中…", class = "btn-primary", disabled = TRUE,
+        "convert", "Converting...", class = "btn-primary", disabled = TRUE,
         icon = shiny::icon("spinner", class = "fa-spin")
       )
     } else {
       shiny::actionButton(
-        "convert", "开始转换", class = "btn-primary",
+        "convert", "Start conversion", class = "btn-primary",
         icon = shiny::icon("play")
       )
     }
@@ -167,18 +167,18 @@ sc_app_server <- function(input, output, session) {
     if (isTRUE(rv$running)) {
       shiny::div(
         shiny::strong(shiny::icon("spinner", class = "fa-spin"),
-                      " 转换进行中，请稍候…"), shiny::br(),
-        shiny::em("大文件可能需要数分钟，请保持页面打开。")
+                      " Converting, please wait..."), shiny::br(),
+        shiny::em("Large files may take several minutes; keep this page open.")
       )
     } else if (!is.null(rv$result)) {
       if (isTRUE(rv$result$ok)) {
-        shiny::div(class = "alert alert-success", "转换完成，可下载结果。")
+        shiny::div(class = "alert alert-success", "Conversion complete; you can download the result.")
       } else {
         shiny::div(class = "alert alert-danger",
-                   paste0("转换失败: ", rv$result$message))
+                   paste0("Conversion failed: ", rv$result$message))
       }
     } else {
-      shiny::helpText("尚未开始转换。")
+      shiny::helpText("Conversion has not started yet.")
     }
   })
 
@@ -188,7 +188,7 @@ sc_app_server <- function(input, output, session) {
 
   output$report_ui <- shiny::renderUI({
     if (is.null(rv$report)) {
-      shiny::helpText("转换完成后显示报告。")
+      shiny::helpText("The report appears after conversion.")
     } else {
       shiny::verbatimTextOutput("report_text")
     }
@@ -200,7 +200,7 @@ sc_app_server <- function(input, output, session) {
     id <- input$demo_id
     if (is.null(id) || !nzchar(id)) return()
     res <- tryCatch(
-      shiny::withProgress(message = "准备示例数据...", value = 0.2, {
+      shiny::withProgress(message = "Preparing demo data...", value = 0.2, {
         p <- sc_demo_prepare(id, caps = caps)
         shiny::incProgress(0.8)
         p
@@ -215,7 +215,7 @@ sc_app_server <- function(input, output, session) {
     rv$demo_path <- res$path
     rv$demo_id <- id
     rv$demo_cleanup <- res$cleanup
-    rv$demo_msg <- paste0("示例已就绪: ", res$path)
+    rv$demo_msg <- paste0("Demo ready: ", res$path)
   })
 
   shiny::observeEvent(input$convert, {
@@ -225,7 +225,7 @@ sc_app_server <- function(input, output, session) {
     shiny::req(d, isTRUE(d$recognized))
 
     if (isFALSE(d$exists)) {
-      rv$report <- sc_build_report(list(ok = FALSE, message = "路径不存在", source = d$path))
+      rv$report <- sc_build_report(list(ok = FALSE, message = "path does not exist", source = d$path))
       return()
     }
     target <- input$target
@@ -233,7 +233,7 @@ sc_app_server <- function(input, output, session) {
     if (!sc_backend_ready(caps)) {
       rv$report <- sc_build_report(list(
         ok = FALSE, source = d$path,
-        message = "后端不可用（scConvert 未安装）。请先安装 scConvert。"
+        message = "Backend unavailable (scConvert is not installed). Install scConvert first."
       ))
       return()
     }
@@ -247,7 +247,7 @@ sc_app_server <- function(input, output, session) {
         if (!is.null(rv$demo_path) && identical(rv$demo_id, id)) {
           list(path = rv$demo_path, origin = "demo", cleanup = character(0))
         } else {
-          p <- shiny::withProgress(message = "准备示例数据...", value = 0.2, {
+          p <- shiny::withProgress(message = "Preparing demo data...", value = 0.2, {
             r <- sc_demo_prepare(id, caps = caps)
             shiny::incProgress(0.8)
             r
@@ -255,7 +255,7 @@ sc_app_server <- function(input, output, session) {
           rv$demo_path <- p$path
           rv$demo_id <- id
           rv$demo_cleanup <- p$cleanup
-          rv$demo_msg <- paste0("示例已就绪: ", p$path)
+          rv$demo_msg <- paste0("Demo ready: ", p$path)
           list(path = p$path, origin = "demo", cleanup = character(0))
         }
       } else {
@@ -312,6 +312,12 @@ sc_app_server <- function(input, output, session) {
       elapsed = as.numeric(difftime(Sys.time(), rv$started, units = "secs")),
       dest = rv$dest, output_size = sc_format_size(rv$dest)
     ))
+  })
+
+  output$download_ui <- shiny::renderUI({
+    if (!is.null(rv$result) && isTRUE(rv$result$ok)) {
+      shiny::downloadButton("download", "Download result", class = "btn-primary")
+    }
   })
 
   output$download <- shiny::downloadHandler(

@@ -26,14 +26,14 @@ sc_convert <- function(source, target_id, dest_path, assay = "RNA",
   }
   if (!requireNamespace("scConvert", quietly = TRUE)) {
     stop(
-      "scConvert 未安装，无法执行转换。请先运行 inst/install/install_scConvert.R。",
+      "scConvert is not installed; cannot convert. Run inst/install/install_scConvert.R first.",
       call. = FALSE
     )
   }
 
   if (identical(target_id, "sce")) {
     if (!requireNamespace("SingleCellExperiment", quietly = TRUE)) {
-      stop("转换到 SingleCellExperiment 需要安装 SingleCellExperiment 包。", call. = FALSE)
+      stop("Converting to SingleCellExperiment requires the SingleCellExperiment package.", call. = FALSE)
     }
     obj <- scConvert::scConvert(
       source, dest = "sce", assay = assay,

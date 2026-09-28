@@ -58,19 +58,19 @@ sc_formats <- function() {
       TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, FALSE
     ),
     notes = c(
-      "Seurat 中枢；h5ad<->h5Seurat 有直接 HDF5 路径加速",
-      "h5ad 的变体；含 /uns/spatial 或 /obsm/spatial 时重建图像与 scale factor",
-      "Seurat 原生格式",
-      "多模态 CITE-seq / ATAC+RNA",
-      "经 Seurat 中枢转换",
-      "保存的是 Seurat 对象（readRDS 读取）",
-      "目录型；scConvert 以临时 h5seurat 流式转换",
-      "本地或远程 TileDB-SOMA URI",
-      "目录型；含 OME-NGFF 图像",
-      "目标仅为内存对象；本应用另存为 <name>.sce.rds 以便下载",
-      "方形 bin Stereo-seq，只读",
-      "cellbin GEF，只读",
-      "scConvert 额外支持，只读"
+      "Seurat hub; a direct HDF5 path speeds up h5ad<->h5Seurat",
+      "h5ad variant; rebuilds images and scale factors when /uns/spatial or /obsm/spatial is present",
+      "Native Seurat format",
+      "Multimodal CITE-seq / ATAC+RNA",
+      "Converted through the Seurat hub",
+      "Stores a Seurat object (read with readRDS)",
+      "Directory format; scConvert streams via a temporary h5seurat",
+      "Local or remote TileDB-SOMA URI",
+      "Directory format; contains OME-NGFF images",
+      "In-memory target only; this app saves it as <name>.sce.rds for download",
+      "Square-bin Stereo-seq, read-only",
+      "cellbin GEF, read-only",
+      "Additional scConvert support, read-only"
     ),
     stringsAsFactors = FALSE
   )
