@@ -1,0 +1,36 @@
+Package: scConvertShiny
+Type: Package
+Title: Interactive Single-Cell Format Conversion Powered by 'scConvert'
+Version: 0.1.0
+Authors@R: person("Open-Science", "User", email = "user@example.com",
+    role = c("aut", "cre"))
+Description: A shinydashboard application for converting single-cell data
+    between the formats supported by the 'scConvert' package: AnnData (h5ad),
+    h5Seurat, MuData (h5mu), Loom, Zarr, TileDB-SOMA, SpatialData, RDS,
+    SingleCellExperiment and Stereo-seq GEF. Small files can be uploaded from
+    the browser while large files and directory-based formats are addressed by
+    a local path. Conversions run asynchronously in a background process and
+    the converted output, together with a conversion report, can be downloaded.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends:
+    R (>= 4.1.0)
+Imports:
+    shiny,
+    shinydashboard,
+    DT,
+    callr,
+    stats,
+    tools,
+    utils
+Suggests:
+    scConvert,
+    Seurat,
+    SeuratObject,
+    SingleCellExperiment,
+    hdf5r,
+    zip,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.1.0
