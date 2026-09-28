@@ -9,6 +9,13 @@ sc_app_server <- function(input, output, session) {
     demo_msg = NULL
   )
 
+  # Non-reactive copies of the temporary paths. session$onSessionEnded() runs
+  # outside a reactive context, so reading rv$cleanup there raises
+  # "Can't access reactive value 'cleanup' outside of reactive consumer".
+  cleanup_env <- new.env(parent = emptyenv())
+  cleanup_env$input <- character(0)
+  cleanup_env$demo <- character(0)
+
   shiny::observe({
     d <- sc_demo_data()
     shiny::updateSelectInput(session, "demo_id",
@@ -215,6 +222,7 @@ sc_app_server <- function(input, output, session) {
     rv$demo_path <- res$path
     rv$demo_id <- id
     rv$demo_cleanup <- res$cleanup
+    cleanup_env$demo <- res$cleanup
     rv$demo_msg <- paste0("Demo ready: ", res$path)
   })
 
@@ -255,6 +263,7 @@ sc_app_server <- function(input, output, session) {
           rv$demo_path <- p$path
           rv$demo_id <- id
           rv$demo_cleanup <- p$cleanup
+          cleanup_env$demo <- p$cleanup
           rv$demo_msg <- paste0("Demo ready: ", p$path)
           list(path = p$path, origin = "demo", cleanup = character(0))
         }
@@ -269,6 +278,7 @@ sc_app_server <- function(input, output, session) {
     if (is.null(prep)) return()
 
     rv$cleanup <- prep$cleanup
+    cleanup_env$input <- prep$cleanup
     rv$source <- prep$path
     rv$source_id <- d$id
     rv$source_label <- d$label
@@ -334,7 +344,7 @@ sc_app_server <- function(input, output, session) {
   )
 
   session$onSessionEnded(function() {
-    if (length(rv$cleanup)) unlink(rv$cleanup, recursive = TRUE)
-    if (length(rv$demo_cleanup)) unlink(rv$demo_cleanup, recursive = TRUE)
+    paths <- c(cleanup_env$input, cleanup_env$demo)
+    if (length(paths)) unlink(paths, recursive = TRUE)
   })
 }
