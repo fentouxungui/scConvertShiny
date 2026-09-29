@@ -59,8 +59,16 @@ sc_detect_input <- function(path, check_exists = TRUE) {
     id <- "h5ad_spatial"
   }
 
+  sc_detection(path, id)
+}
+
+#' Build a detection result for a format id
+#' @noRd
+sc_detection <- function(path, id) {
   row <- sc_format_by_id(id)
-  exists_flag <- if (grepl("://", path)) {
+  exists_flag <- if (!is.character(path) || length(path) != 1 || is.na(path)) {
+    NA
+  } else if (grepl("://", path)) {
     NA
   } else {
     file.exists(path) || dir.exists(path)
@@ -74,6 +82,47 @@ sc_detect_input <- function(path, check_exists = TRUE) {
     recognized = nrow(row) == 1 && !is.na(id),
     exists = exists_flag
   )
+}
+
+#' Detect the format inside a .zip archive without extracting it
+#'
+#' Reads only the archive index (fast) and infers the format from member
+#' names, so directory-based formats (Zarr, SpatialData, CosMx) can be
+#' recognised from a zipped folder before extraction.
+#'
+#' @param zip_path Path to the .zip file.
+#' @return A detection list (see [sc_detect_input()]).
+#' @export
+sc_detect_zip <- function(zip_path) {
+  ent <- tryCatch(
+    utils::unzip(zip_path, list = TRUE)$Name,
+    error = function(e) character(0), warning = function(w) character(0)
+  )
+  ent <- ent[!is.na(ent)]
+  if (!length(ent)) return(sc_detection(zip_path, NA_character_))
+  files <- ent[!grepl("/$", ent)]
+  bn <- basename(ent)
+
+  if (any(grepl("\\.spatialdata\\.zarr/", ent, ignore.case = TRUE))) {
+    return(sc_detection(zip_path, "spatialdata.zarr"))
+  }
+  if (any(grepl("\\.zarr/", ent, ignore.case = TRUE))) {
+    return(sc_detection(zip_path, "zarr"))
+  }
+  if (any(grepl("\\.cellbin\\.gef$", bn, ignore.case = TRUE))) {
+    return(sc_detection(zip_path, "cellbin.gef"))
+  }
+  if (any(grepl("\\.gef$", bn, ignore.case = TRUE))) {
+    return(sc_detection(zip_path, "gef"))
+  }
+  if (length(files) == 1) {
+    d <- sc_detect_input(basename(files))
+    return(sc_detection(zip_path, d$id))
+  }
+  if (sum(grepl("\\.csv$", bn, ignore.case = TRUE)) >= 3) {
+    return(sc_detection(zip_path, "cosmx"))
+  }
+  sc_detection(zip_path, NA_character_)
 }
 
 #' Heuristic: is a directory a NanoString CosMx bundle?

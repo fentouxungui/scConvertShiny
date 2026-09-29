@@ -31,6 +31,9 @@ sc_prepare_input <- function(upload = NULL, path = NULL, upload_name = NULL,
                              dest_dir = tempdir(),
                              max_upload_mb = sc_max_upload_mb()) {
   cleanup <- character(0)
+  if (!dir.exists(dest_dir)) {
+    dir.create(dest_dir, recursive = TRUE, showWarnings = FALSE)
+  }
 
   if (!is.null(upload) && nzchar(upload)) {
     if (!file.exists(upload)) stop("The uploaded temporary file was not found.", call. = FALSE)
@@ -52,11 +55,7 @@ sc_prepare_input <- function(upload = NULL, path = NULL, upload_name = NULL,
       utils::unzip(staged, exdir = exdir)
       cleanup <- c(cleanup, exdir)
       entries <- list.files(exdir, full.names = TRUE)
-      target <- if (length(entries) == 1 && dir.exists(entries[1])) {
-        entries[1]
-      } else {
-        exdir
-      }
+      target <- if (length(entries) == 1) entries[1] else exdir
       return(list(path = target, origin = "upload", cleanup = cleanup))
     }
     return(list(path = staged, origin = "upload", cleanup = cleanup))

@@ -52,11 +52,22 @@ sc_app_server <- function(input, output, session) {
     if (identical(input$input_mode, "upload")) {
       f <- input$upload_file
       if (is.null(f)) return(NULL)
-      d <- sc_detect_input(f$name, check_exists = FALSE)
+      d <- if (grepl("\\.zip$", f$name, ignore.case = TRUE)) {
+        sc_detect_zip(f$datapath)
+      } else {
+        sc_detect_input(f$name, check_exists = FALSE)
+      }
       if (!is.null(d)) {
         d$path <- f$datapath
         d$exists <- TRUE
       }
+      d
+    } else if (identical(input$input_mode, "folder")) {
+      f <- input$folder_zip
+      if (is.null(f)) return(NULL)
+      d <- sc_detect_zip(f$datapath)
+      d$path <- f$datapath
+      d$exists <- TRUE
       d
     } else if (identical(input$input_mode, "demo")) {
       id <- input$demo_id
@@ -71,9 +82,7 @@ sc_app_server <- function(input, output, session) {
         can_read = TRUE, recognized = TRUE, exists = TRUE, demo_id = id
       )
     } else {
-      p <- trimws(input$path_input %||% "")
-      if (!nzchar(p)) return(NULL)
-      sc_detect_input(p)
+      NULL
     }
   })
 
@@ -250,6 +259,9 @@ sc_app_server <- function(input, output, session) {
       if (identical(input$input_mode, "upload")) {
         sc_prepare_input(upload = input$upload_file$datapath,
                          upload_name = input$upload_file$name)
+      } else if (identical(input$input_mode, "folder")) {
+        sc_prepare_input(upload = input$folder_zip$datapath,
+                         upload_name = input$folder_zip$name)
       } else if (identical(input$input_mode, "demo")) {
         id <- input$demo_id
         if (!is.null(rv$demo_path) && identical(rv$demo_id, id)) {
@@ -268,7 +280,7 @@ sc_app_server <- function(input, output, session) {
           list(path = p$path, origin = "demo", cleanup = character(0))
         }
       } else {
-        sc_prepare_input(path = trimws(input$path_input))
+        stop("No input selected.", call. = FALSE)
       },
       error = function(e) {
         rv$report <- sc_build_report(list(ok = FALSE, message = conditionMessage(e)))

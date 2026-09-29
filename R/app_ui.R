@@ -15,6 +15,16 @@ sc_app_ui <- function(request) {
       )
     ),
     shinydashboard::dashboardBody(
+      htmltools::htmlDependency(
+        "scConvertShiny-folder-upload", "0.1",
+        src = system.file("www", package = "scConvertShiny"),
+        script = "folder-upload.js"
+      ),
+      shiny::tags$head(
+        shiny::tags$script(
+          src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"
+        )
+      ),
       shinydashboard::tabItems(
         shinydashboard::tabItem(
           tabName = "convert",
@@ -24,8 +34,8 @@ sc_app_ui <- function(request) {
               title = "1. Choose input",
               shiny::radioButtons(
                 "input_mode", NULL,
-                choices = c("Small file upload" = "upload",
-                            "Local path (large files / directories)" = "path",
+                choices = c("Upload file" = "upload",
+                            "Upload folder" = "folder",
                             "Demo data" = "demo"),
                 inline = TRUE
               ),
@@ -33,18 +43,29 @@ sc_app_ui <- function(request) {
                 condition = "input.input_mode == 'upload'",
                 shiny::fileInput("upload_file", "Choose a file", multiple = FALSE),
                 shiny::helpText(
-                  "Browser upload accepts a single file up to 20 GB (adjust with ",
-                  "options(scConvertShiny.maxUploadMB = ...)); for very large files ",
-                  "or directory formats, prefer the local-path mode."
+                  "A single file up to 20 GB (adjust with ",
+                  "options(scConvertShiny.maxUploadMB = ...)). ",
+                  "Use this for single-file formats: h5ad, h5Seurat, h5mu, loom, rds."
                 )
               ),
               shiny::conditionalPanel(
-                condition = "input.input_mode == 'path'",
-                shiny::textInput(
-                  "path_input", "Absolute path",
-                  placeholder = "D:/data/sample.h5ad  or  D:/atlas.zarr  or  soma://collection/measurement"
+                condition = "input.input_mode == 'folder'",
+                shiny::tags$div(
+                  class = "form-group",
+                  shiny::tags$label("Choose a folder", `for` = "folder_picker"),
+                  shiny::tags$input(id = "folder_picker", type = "file",
+                                    webkitdirectory = "", multiple = NA),
+                  shiny::tags$div(id = "folder_status", class = "help-block")
                 ),
-                shiny::helpText("Supports files, .zarr / .spatialdata.zarr directories, and soma:// URIs.")
+                shiny::fileInput("folder_zip", "...or choose a .zip archive",
+                                 accept = ".zip", multiple = FALSE),
+                shiny::helpText(
+                  "Folder upload is for directory-based data: Zarr (.zarr), ",
+                  "SpatialData (.spatialdata.zarr) and NanoString CosMx ",
+                  "(a folder of CSV files). Choosing a folder zips it in the ",
+                  "browser and the server extracts it automatically; you can ",
+                  "also upload a .zip you made yourself."
+                )
               ),
               shiny::conditionalPanel(
                 condition = "input.input_mode == 'demo'",
@@ -52,8 +73,9 @@ sc_app_ui <- function(request) {
                 shiny::actionButton("load_demo", "Load demo data",
                                     icon = shiny::icon("download")),
                 shiny::helpText(
-                  "Demo data come from the scConvert repository (first use downloads ",
-                  "0.6-3.2 MB); if scConvert is installed, its bundled copy is used."
+                  "Demo data come from the scConvert repository (first use ",
+                  "downloads 0.6-3.2 MB); if scConvert is installed, its ",
+                  "bundled copy is used."
                 )
               ),
               shiny::uiOutput("detected_ui")
