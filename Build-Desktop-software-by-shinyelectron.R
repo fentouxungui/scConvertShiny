@@ -160,7 +160,34 @@ optimize:
 ', icons_yaml)
 writeLines(config_code, file.path(app_dir, "_shinyelectron.yml"))
 
-# ---- 4. Build ----------------------------------------------------------
+# ---- 4. HDF5 for scConvert's configure ---------------------------------
+# scConvert compiles from source inside the bundled R runtime and its
+# configure step needs HDF5. scConvert's own "reuse hdf5r" strategy fails when
+# hdf5r was installed as a (prebuilt) binary, so provide HDF5 explicitly and
+# export the variables the configure script documents; the child R process
+# spawned by export() inherits them.
+sysname <- tolower(Sys.info()[["sysname"]])
+if (identical(sysname, "darwin")) {
+  system("brew install hdf5 pkg-config")            # idempotent
+  h5 <- tryCatch(system("brew --prefix hdf5", intern = TRUE),
+                 error = function(e) character(0))
+  if (length(h5) == 1 && dir.exists(h5)) {
+    Sys.setenv(
+      PKG_CONFIG_PATH = file.path(h5, "lib", "pkgconfig"),
+      HDF5_CFLAGS = paste0("-I", file.path(h5, "include")),
+      HDF5_LIBS = paste0("-L", file.path(h5, "lib"), " -lhdf5")
+    )
+    message("HDF5 provided from Homebrew: ", h5)
+  } else {
+    warning("Homebrew hdf5 not found; scConvert may fail to configure.")
+  }
+} else if (identical(sysname, "windows")) {
+  # On Windows, Rtools provides the compiler. If hdf5r's bundled HDF5 is not
+  # picked up by scConvert's configure, install HDF5 (e.g. conda-forge/vcpkg)
+  # and set HDF5_CFLAGS / HDF5_LIBS here.
+}
+
+# ---- 5. Build ----------------------------------------------------------
 options(timeout = 3600)   # bundled installs pull a lot of packages; be patient
 
 export(
