@@ -135,6 +135,38 @@ source(system.file("tests", "selftest.R", package = "scConvertShiny"))
 Setting `options(scConvertShiny.backend = "stub")` enables a stub backend so
 the whole UI flow can run without scConvert.
 
+## Desktop build (optional)
+
+`.github/workflows/build-desktop.yml` builds unsigned Windows/macOS installers
+with [`shinyelectron`](https://github.com/fentouxungui/shinyelectron) (the
+fork), mirroring the SeuratExplorer setup:
+
+```
+build-pkg (source tarball) -> build (Windows + macOS installers) -> release (on v* tags)
+```
+
+Push a `v*` tag, or run it manually from the Actions tab. Locally:
+
+```r
+pak::pak("fentouxungui/shinyelectron")
+Rscript Build-Desktop-software-by-shinyelectron.R
+```
+
+`app.R` uses `sc_app()`, which returns the Shiny app object (shinyelectron runs
+it) and keeps the 20 GB upload limit.
+
+Icons: the chosen icon (candidate `02_contain_white`) is installed at
+`icons/ico/scConvertShiny.ico` (Windows) and `icons/mac/scConvertShiny.png`
+(macOS); the build script picks both up automatically. To regenerate or pick
+another, run `python icons/make_icons.py` (needs `pillow`) to rebuild the grid
+in `icons/generated/` (`preview.png` plus per-candidate PNG/ICO/1024px), then
+copy the chosen files into `icons/ico/` and `icons/mac/`.
+
+Note: `scConvert` contains C source and is not on CRAN. Put a per-platform
+`scConvert_*.tar.gz` (or `scConvert-*.tar.gz`) in `dependency/` so the bundled
+runtime can install it; otherwise the desktop app starts with conversion
+disabled.
+
 ## Known limitations
 
 - `scConvert` contains C source; installing from source needs a toolchain.

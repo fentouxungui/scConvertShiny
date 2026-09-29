@@ -1,0 +1,153 @@
+# Build scConvertShiny desktop installers (Windows + macOS) with shinyelectron.
+#
+#   build-pkg : builds the scConvertShiny source package once (artifact).
+#   build     : per-platform Electron build using the fork of shinyelectron
+#               that supports `dependencies.r.local_packages` and `updates`.
+#   release   : on a v* tag, attaches installers + latest*.yml to a GitHub
+#               Release (electron-updater reads them).
+#
+# Placement: .github/workflows/build-desktop.yml in the scConvertShiny repo.
+#
+# Notes
+#   * Linux is intentionally excluded: the `bundled` runtime ships portable R,
+#     which upstream publishes for macOS/Windows only.
+#   * macOS/Windows builds are UNSIGNED, so first launch shows Gatekeeper /
+#     SmartScreen prompts. Add signing secrets and `sign: 'true'` for smooth
+#     distribution (macOS auto-update requires signing + notarization).
+#   * Do NOT call shinyelectron::install_nodejs() in CI. Provide Node.js with
+#     actions/setup-node; the bundled helper falls back to the PATH node.
+#   * The fork uses `rlang` (undeclared) and `withr` (Suggests-only) at
+#     runtime, so install both explicitly.
+#   * scConvert (the conversion dependency) contains C source and is not on
+#     CRAN. Provide a per-platform scConvert package tarball in dependency/
+#     before the `build` job (see the "Prepare scConvert dependency" block),
+#     or install it into the bundled runtime with a working toolchain.
+#   * Upload/Release globs deliberately use single `*` (NOT `**`): the
+#     electron-builder output dir also contains win-unpacked/ and the bundled R
+#     runtime, and a recursive glob would upload the whole app.
+
+name: Build Desktop App
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build-pkg:
+    name: Build scConvertShiny source package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - name: R CMD build
+        run: R CMD build . --no-build-vignettes --no-manual
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sconvert-shiny-src
+          path: scConvertShiny_*.tar.gz
+          if-no-files-found: error
+
+  build:
+    name: Build (${{ matrix.platform }})
+    needs: build-pkg
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, platform: win }
+          - { os: macos-latest,   platform: mac }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      # Node.js + npm on PATH (Node 24 -> npm >= 11.5).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Fetch the scConvertShiny source package
+        uses: actions/download-artifact@v5
+        with:
+          name: sconvert-shiny-src
+          path: dependency
+
+      # OPTIONAL: build scConvert on this runner and drop the tarball into
+      # dependency/ so the bundled runtime can install it as a local package.
+      # scConvert needs a C toolchain (Rtools on Windows is preinstalled;
+      # macOS runners have Xcode CLT) plus HDF5 headers. Uncomment and adapt
+      # once you are ready to ship a self-contained desktop build.
+      #
+      # - name: Prepare scConvert dependency
+      #   shell: Rscript {0}
+      #   run: |
+      #     install.packages(c("remotes", "hdf5r"))
+      #     dir.create("dependency-src", showWarnings = FALSE)
+      #     download.file("https://github.com/mianaz/scConvert/archive/refs/heads/main.zip",
+      #                   "dependency-src/scConvert.zip", mode = "wb")
+      #     utils::unzip("dependency-src/scConvert.zip", exdir = "dependency-src")
+      #     pkg <- list.dirs("dependency-src", recursive = FALSE,
+      #                      full.names = TRUE)[1]
+      #     system(sprintf("R CMD build %s --no-build-vignettes --no-manual", shQuote(pkg)))
+      #     file.copy(Sys.glob("scConvert_*.tar.gz"), "dependency/")
+
+      - name: Install shinyelectron (fork) and its runtime deps
+        shell: Rscript {0}
+        run: |
+          install.packages("pak")
+          pak::pak(c("fentouxungui/shinyelectron", "rlang", "withr", "renv"))
+          cat("libPaths:\n"); print(.libPaths())
+          print(find.package("shinyelectron", quiet = TRUE))
+          print(find.package("rlang", quiet = TRUE))
+          print(find.package("withr", quiet = TRUE))
+
+      - name: Verify the toolchain
+        shell: Rscript {0}
+        run: |
+          cat("PATH node :", Sys.which("node"), "\n")
+          cat("PATH npm  :", Sys.which("npm"), "\n")
+          system("node --version"); system("npm --version")
+
+      - name: Build the desktop app
+        shell: Rscript {0}
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          APP_VERSION: ${{ github.ref_name }}
+        run: source("Build-Desktop-software-by-shinyelectron.R")
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.platform }}
+          if-no-files-found: error
+          # Top level of electron-builder's output dir only (* not **), so
+          # win-unpacked/, the bundled R runtime, app-update.yml, etc. are NOT
+          # uploaded.
+          path: |
+            build/electron-app/dist/*.exe
+            build/electron-app/dist/*.exe.blockmap
+            build/electron-app/dist/*.dmg
+            build/electron-app/dist/*.dmg.blockmap
+            build/electron-app/dist/latest*.yml
+
+  release:
+    name: Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
