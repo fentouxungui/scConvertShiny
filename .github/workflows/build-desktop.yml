@@ -114,6 +114,23 @@ jobs:
           cat("PATH npm  :", Sys.which("npm"), "\n")
           system("node --version"); system("npm --version")
 
+      # scConvert compiles from source inside the bundled R runtime and its
+      # configure step needs HDF5. Its first strategy is to reuse hdf5r's
+      # bundled HDF5, so `hdf5r` is installed via extra_packages. As a safety
+      # net, also provide a system HDF5.
+      - name: Provide HDF5 for scConvert (macOS)
+        if: matrix.platform == 'mac'
+        run: |
+          brew install hdf5 pkg-config
+          H5="$(brew --prefix hdf5)"
+          echo "PKG_CONFIG_PATH=$H5/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "HDF5_CFLAGS=-I$H5/include" >> "$GITHUB_ENV"
+          echo "HDF5_LIBS=-L$H5/lib -lhdf5" >> "$GITHUB_ENV"
+
+      # On Windows, hdf5r bundles HDF5 and scConvert's configure reuses it, so
+      # no extra step is normally needed. If it ever fails, install HDF5 (e.g.
+      # via conda-forge / vcpkg) and export HDF5_CFLAGS and HDF5_LIBS.
+
       - name: Build the desktop app
         shell: Rscript {0}
         env:

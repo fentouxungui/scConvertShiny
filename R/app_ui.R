@@ -3,7 +3,27 @@
 sc_app_ui <- function(request) {
   shinydashboard::dashboardPage(
     skin = "blue",
-    shinydashboard::dashboardHeader(title = "scConvertShiny"),
+    shinydashboard::dashboardHeader(
+      title = "scConvertShiny",
+      shiny::tags$li(
+        class = "dropdown",
+        shiny::tags$a(
+          href = "https://github.com/fentouxungui/scConvertShiny",
+          target = "_blank", rel = "noopener",
+          title = "scConvertShiny on GitHub",
+          shiny::icon("github"), " scConvertShiny"
+        )
+      ),
+      shiny::tags$li(
+        class = "dropdown",
+        shiny::tags$a(
+          href = "https://github.com/mianaz/scConvert",
+          target = "_blank", rel = "noopener",
+          title = "scConvert on GitHub",
+          shiny::icon("github"), " scConvert"
+        )
+      )
+    ),
     shinydashboard::dashboardSidebar(
       shinydashboard::sidebarMenu(
         shinydashboard::menuItem("Convert", tabName = "convert",

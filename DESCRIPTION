@@ -1,7 +1,7 @@
 Package: scConvertShiny
 Type: Package
 Title: Interactive Single-Cell Format Conversion Powered by 'scConvert'
-Version: 0.1.0
+Version: 0.1.1
 Authors@R: person("Yongchao", "Zhang", email = "zhangyongchao@nibs.ac.cn",
     role = c("aut", "cre", "cph"))
 Description: A shinydashboard application for converting single-cell data
@@ -19,6 +19,7 @@ Depends:
 Imports:
     shiny,
     shinydashboard,
+    htmltools,
     DT,
     callr,
     stats,

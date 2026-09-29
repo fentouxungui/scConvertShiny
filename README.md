@@ -3,12 +3,36 @@
 A `shinydashboard` app that wraps the format-conversion capabilities of
 [`scConvert`](https://github.com/mianaz/scConvert) in a three-step wizard:
 
-1. Choose input (small file upload, or a local path for large files / directories);
+1. Choose input: **upload a file**, or **upload a folder** for directory-based data;
 2. Pick a legal target format based on the detected input;
 3. Convert asynchronously and download the result, together with a conversion report.
 
 Conversions route through the Seurat hub; `h5ad <-> h5Seurat` uses scConvert's
 direct HDF5 path.
+
+### Input modes
+
+- **Upload file** — a single file (`h5ad`, `h5Seurat`, `h5mu`, `loom`, `rds`,
+  ...), up to the 20 GB limit.
+- **Upload folder** — for directory-based data: Zarr (`.zarr`), SpatialData
+  (`.spatialdata.zarr`) and NanoString CosMx (a folder of CSV files). The
+  browser zips the folder (relative paths preserved) and the server extracts it
+  automatically; a `.zip` you made yourself works too. Everything travels
+  through the browser, so it also works on a remote Shiny Server (unlike a
+  server-side path, which cannot see files on your own computer).
+
+Use **folder upload** whenever the input is one of those directory formats;
+use **file upload** for everything else.
+
+## Live demo
+
+A public instance is deployed on a Shiny Server and is free to use:
+<http://netinfo.nibs.ac.cn:666/scConvertShiny/>
+
+Note: the server's network bandwidth is limited, so **large file uploads may be
+slow** or stall. For big datasets, prefer the local install or the desktop
+build, or transfer the file to the server out-of-band and use a folder/file
+upload in small pieces.
 
 ## Supported formats
 
@@ -177,8 +201,11 @@ macOS workflow also installs a system HDF5 as a fallback.
 - Browser uploads default to a 20 GB per-file limit: `run_app()` sets
   `shiny.maxRequestSize` accordingly; adjust with
   `options(scConvertShiny.maxUploadMB = <MB>)`, or override per call with
-  `sc_prepare_input(max_upload_mb = )`. For larger files or directory formats
-  use the local-path mode.
+  `sc_prepare_input(max_upload_mb = )`.
+- Folder upload packs the folder in the browser with JSZip (loaded from a CDN
+  by default). On an intranet without internet, either download `jszip.min.js`
+  into `inst/www/` and point the `<script>` at it, or simply upload a `.zip`
+  you made yourself.
 - `SingleCellExperiment` is an in-memory target; this app saves it as
   `<name>.sce.rds`.
 
