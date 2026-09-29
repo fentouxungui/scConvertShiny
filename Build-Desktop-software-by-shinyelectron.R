@@ -80,14 +80,19 @@ local_yaml <- if (length(local_pkgs)) {
 }
 
 # ---- icons ------------------------------------------------------------
-# Windows uses the .ico passed to export(); macOS uses `icons.mac` from the
-# config (an .icns or a .png).
+# Windows uses the .ico; macOS uses an .icns (or .png). Prefer .icns on macOS.
 icon <- list.files(file.path(ws, "icons", "ico"), pattern = "[.]ico$",
                    full.names = TRUE)
 icon <- if (length(icon)) icon[[1]] else NULL
-mac_icon <- list.files(file.path(ws, "icons", "mac"),
-                       pattern = "[.](png|icns)$", full.names = TRUE)
-mac_icon <- if (length(mac_icon)) mac_icon[[1]] else NULL
+mac_files <- list.files(file.path(ws, "icons", "mac"),
+                        pattern = "[.](icns|png)$", full.names = TRUE)
+mac_icns <- mac_files[grepl("[.]icns$", mac_files)]
+mac_png <- mac_files[grepl("[.]png$", mac_files)]
+mac_icon <- if (length(mac_icns)) mac_icns[[1]] else if (length(mac_png)) mac_png[[1]] else NULL
+# electron-builder expects an .icns on macOS; pass it as the primary icon there.
+if (identical(tolower(Sys.info()[["sysname"]]), "darwin") && !is.null(mac_icon)) {
+  icon <- mac_icon
+}
 icons_yaml <- if (!is.null(mac_icon)) {
   paste0('\nicons:\n  mac: "',
          normalizePath(mac_icon, winslash = "/", mustWork = FALSE), '"\n')
@@ -128,6 +133,8 @@ dependencies:
     - scConvertShiny
     - Seurat
     - SeuratObject
+    - hdf5r
+    - crayon
     - shiny
     - shinydashboard
     - DT

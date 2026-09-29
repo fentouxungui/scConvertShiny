@@ -156,16 +156,17 @@ Rscript Build-Desktop-software-by-shinyelectron.R
 it) and keeps the 20 GB upload limit.
 
 Icons: the chosen icon (candidate `02_contain_white`) is installed at
-`icons/ico/scConvertShiny.ico` (Windows) and `icons/mac/scConvertShiny.png`
-(macOS); the build script picks both up automatically. To regenerate or pick
-another, run `python icons/make_icons.py` (needs `pillow`) to rebuild the grid
-in `icons/generated/` (`preview.png` plus per-candidate PNG/ICO/1024px), then
-copy the chosen files into `icons/ico/` and `icons/mac/`.
+`icons/ico/scConvertShiny.ico` (Windows) and `icons/mac/scConvertShiny.icns`
+plus `.png` (macOS); the build script prefers the `.icns` on macOS. To
+regenerate or pick another, run `python icons/make_icons.py` (needs `pillow`)
+to rebuild the grid in `icons/generated/` (`preview.png` plus per-candidate
+PNG/ICO/1024px), then copy the chosen files into `icons/ico/` and `icons/mac/`.
 
-Note: `scConvert` contains C source and is not on CRAN. Put a per-platform
-`scConvert_*.tar.gz` (or `scConvert-*.tar.gz`) in `dependency/` so the bundled
-runtime can install it; otherwise the desktop app starts with conversion
-disabled.
+Note: `scConvert` contains C source and is not on CRAN, so the bundled runtime
+must compile it. It is listed in `dependency/` as `scConvert_*.tar.gz`
+(or `scConvert-*.tar.gz`). Its configure step needs HDF5; the build config
+therefore installs `hdf5r` (which bundles HDF5) as an `extra_package`, and the
+macOS workflow also installs a system HDF5 as a fallback.
 
 ## Known limitations
 
