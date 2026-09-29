@@ -95,18 +95,17 @@ icons_yaml <- if (!is.null(mac_icon)) {
   ""
 }
 
-# ---- 3. _shinyelectron.yml
- -------------------------------------------
+# ---- 3. _shinyelectron.yml -------------------------------------------
 config_code <- paste0('
 app:
   version: "', app_version, '"
   slug: "sconvert-shiny"
   log_level: "info"
   description: "Interactive single-cell format conversion powered by scConvert"
-  author: "Open-Science"
-  email: "user@example.com"
+  author: "Zhang Yongchao"
+  email: "zhangyongchao@nibs.ac.cn"
   homepage: "https://github.com/', owner, '/', repo_name, '"
-  copyright: "Copyright (c) 2026 Open-Science. MIT."
+  copyright: "Copyright (c) 2026 Zhang Yongchao. MIT."
 
 build:
   runtime_strategy: "bundled"

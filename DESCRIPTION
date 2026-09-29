@@ -2,8 +2,8 @@ Package: scConvertShiny
 Type: Package
 Title: Interactive Single-Cell Format Conversion Powered by 'scConvert'
 Version: 0.1.0
-Authors@R: person("Open-Science", "User", email = "user@example.com",
-    role = c("aut", "cre"))
+Authors@R: person("Yongchao", "Zhang", email = "zhangyongchao@nibs.ac.cn",
+    role = c("aut", "cre", "cph"))
 Description: A shinydashboard application for converting single-cell data
     between the formats supported by the 'scConvert' package: AnnData (h5ad),
     h5Seurat, MuData (h5mu), Loom, Zarr, TileDB-SOMA, SpatialData, RDS,
