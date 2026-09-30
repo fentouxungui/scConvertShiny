@@ -2,13 +2,10 @@
 # Place at  scConvertShiny/.github/workflows/build-app-bundle.yml
 #
 # Produces, per platform:  scconvert-<version>-<platform>.zip
-#   bundle/
-#   +- manifest.json
-#   +- app/app.R
-#   +- rlib/<Pkg>/   (scConvertShiny + scConvert + deps, prebuilt)
+#   bundle/ +- manifest.json +- app/app.R +- rlib/<Pkg>/
 #
-# scConvert and scConvertShiny are built with R CMD build (proper source package),
-# then installed into bundle/rlib. macOS provides HDF5 for scConvert's configure.
+# scConvert and scConvertShiny are built with R CMD build, then installed into
+# bundle/rlib. macOS provides HDF5 for scConvert's configure.
 
 name: Build app bundle
 
@@ -34,7 +31,6 @@ env:
   APP_HOMEPAGE: "https://github.com/fentouxungui/scConvertShiny"
   APP_LICENSE: "MIT"
   R_VERSION: "4.6.1"
-  # scConvert source ref to build (pin to a tag/commit for reproducibility).
   SCCONVERT_REF: "main"
 
 jobs:
@@ -58,7 +54,6 @@ jobs:
         shell: bash
         run: Rscript -e 'install.packages(c("jsonlite","zip","digest","BiocManager"), repos="https://cloud.r-project.org")'
 
-      # scConvert compiles from source and its configure needs HDF5 on macOS.
       - name: Provide HDF5 (macOS)
         if: matrix.platform == 'mac-arm64'
         run: |
@@ -114,13 +109,17 @@ jobs:
           })))
 
           db <- available.packages(repos = repos)
-          closure <- unique(c(unlist(tools::package_dependencies(loc_names, db = db, recursive = TRUE)), declared))
+          # Full transitive closure over BOTH the local names and their declared
+          # deps. GitHub-only packages (scConvert, scConvertShiny) are absent from
+          # `db`, so their deps come from `declared` and must be expanded here --
+          # otherwise transitive deps (e.g. RANN via Seurat) are missed.
+          seed <- unique(c(loc_names, declared))
+          closure <- unique(c(unlist(tools::package_dependencies(seed, db = db, recursive = TRUE)), declared))
           closure <- setdiff(closure, c(loc_names, rownames(installed.packages()), basename(list.dirs(lib, recursive = FALSE))))
           if (length(closure)) {
             install.packages(closure, lib = lib, repos = repos, type = "binary",
                              dependencies = FALSE, Ncpus = 2)
           }
-          # hdf5r is installed above as a binary; scConvert's configure reuses it on Windows.
           install.packages(local_paths, lib = lib, repos = NULL, type = "source", dependencies = FALSE)
 
           missing <- setdiff(loc_names, basename(list.dirs(lib, recursive = FALSE)))
