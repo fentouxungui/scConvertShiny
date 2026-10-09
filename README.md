@@ -10,7 +10,14 @@ A `shinydashboard` app that wraps the format-conversion capabilities of
 Conversions route through the Seurat hub; `h5ad <-> h5Seurat` uses scConvert's
 direct HDF5 path.
 
-### Input modes
+## Available on ShinyApps
+
+This app is now available on
+[ShinyApps](https://github.com/fentouxungui/ShinyApps/releases), a
+desktop app store for Shiny Apps that allows users to install, run,
+update, and uninstall apps.
+
+## Input modes
 
 - **Upload file** — a single file (`h5ad`, `h5Seurat`, `h5mu`, `loom`, `rds`,
   ...), up to the 20 GB limit.
