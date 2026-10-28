@@ -18,7 +18,7 @@ on:
         description: "Existing tag to attach bundles to"
         required: false
         type: string
-        default: "v0.1.1"
+        default: "v0.1.3"
 
 permissions:
   contents: write
@@ -89,6 +89,12 @@ jobs:
           options(repos = repos)
 
           tb <- list.files(".", pattern = sprintf("^scConvertShiny_%s[.]tar[.]gz$", Sys.getenv("VERSION")), full.names = TRUE)
+          if (!length(tb)) {
+            built <- list.files(".", pattern = "^scConvertShiny_[0-9].*[.]tar[.]gz$")
+            stop(sprintf(
+              "scConvertShiny_%s.tar.gz not found (built: %s) -- bump DESCRIPTION Version to match the tag (version mismatch)",
+              Sys.getenv("VERSION"), paste(built, collapse = ", ")))
+          }
           local_extra <- list.files(".", pattern = "^scConvert_[0-9].*[.]tar[.]gz$", full.names = TRUE)
           local_paths <- normalizePath(c(tb, local_extra), winslash = "/", mustWork = TRUE)
 
