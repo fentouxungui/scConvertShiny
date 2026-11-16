@@ -1,27 +1,41 @@
 # scConvertShiny app-layer bundle builder.
-# Place at  scConvertShiny/.github/workflows/build-app-bundle.yml
+# Standard path: .github/workflows/build-app-bundle.yml (migrated from the
+# legacy per-app filename; apps/scconvert keeps the old path as provenance).
+# Build-toolchain deviation: this app still installs with setup-r's framework R
+# (the v5 template uses portable R). Revalidate the macOS bundle on a clean Mac
+# before publishing; migrating to portable R is a separate change.
 #
 # Produces, per platform:  scconvert-<version>-<platform>.zip
 #   bundle/ +- manifest.json +- app/app.R +- rlib/<Pkg>/
 #
 # scConvert and scConvertShiny are built with R CMD build, then installed into
 # bundle/rlib. macOS provides HDF5 for scConvert's configure.
+#
+# Release rules follow shinyapps-onboarding v5.5: a v* tag push is the only
+# automatic trigger; a resolve job canonicalizes/validates the tag; a manual
+# run only attaches to the tag's existing Release and never creates one.
+# To retry a failed first build, re-run the original tag-push run (it keeps
+# event=push and may create the Release); a manual dispatch will not.
+# Push tags with git. A tag created through the Release UI may not emit a
+# push event; in that case run this workflow manually against the Release.
 
 name: Build app bundle
 
+# Do NOT add `release: published`: this workflow creates the Release for a new
+# tag, so that event would start a second identical build/upload.
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to attach bundles to"
-        required: false
+        description: "Existing tag whose Release should receive the bundles (e.g. v0.1.4)"
+        required: true
         type: string
-        default: "v0.1.3"
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   APP_ID: scconvert
@@ -34,16 +48,61 @@ env:
   SCCONVERT_REF: "main"
 
 jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve and validate target tag
+        id: resolve
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          EVENT_TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
+        run: |
+          set -euo pipefail
+          raw="${INPUT_TAG:-$EVENT_TAG}"
+          raw="${raw#refs/tags/}"
+          raw="${raw#v}"
+          raw="$(printf '%s' "$raw" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+          if [ -z "$raw" ]; then
+            echo "::error::cannot resolve tag: pass a tag input or push a v* tag"
+            exit 1
+          fi
+
+          tag="v$raw"
+          if ! git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::tag $tag does not exist in this checkout"
+            echo "fetched tags: $(git tag -l 'v*' | tr '\n' ' ')"
+            exit 1
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$raw" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag=$tag version=$raw"
+
   bundle:
+    needs: resolve
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - { os: windows-latest, platform: "win-x64" }
-          - { os: macos-14,       platform: "mac-arm64" }
+          - { os: macos-15,       platform: "mac-arm64" }
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Build exactly the resolved tag, never the default branch.
+          ref: ${{ needs.resolve.outputs.tag }}
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: r-lib/actions/setup-r@v2
         with:
@@ -63,13 +122,19 @@ jobs:
           echo "HDF5_CFLAGS=-I$H5/include" >> "$GITHUB_ENV"
           echo "HDF5_LIBS=-L$H5/lib -lhdf5" >> "$GITHUB_ENV"
 
-      - name: Resolve version
+      - name: Use the resolved tag and version
         shell: bash
+        env:
+          RESOLVED_TAG: ${{ needs.resolve.outputs.tag }}
+          RESOLVED_VERSION: ${{ needs.resolve.outputs.version }}
         run: |
-          V="${{ github.event.release.tag_name }}${{ inputs.tag }}"
-          V="${V#v}"
-          if [ -z "$V" ]; then V=$(grep '^Version:' DESCRIPTION | awk '{print $2}'); fi
-          echo "VERSION=$V" >> "$GITHUB_ENV"
+          set -euo pipefail
+          : "${RESOLVED_TAG:?}" "${RESOLVED_VERSION:?}"
+          echo "VERSION=$RESOLVED_VERSION" >> "$GITHUB_ENV"
+          echo "TAG=$RESOLVED_TAG" >> "$GITHUB_ENV"
+          # Record the checked-out tag commit, not the workflow ref.
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "SOURCE_REF=refs/tags/$RESOLVED_TAG" >> "$GITHUB_ENV"
 
       - name: Build scConvertShiny + scConvert source tarballs
         shell: bash
@@ -121,12 +186,13 @@ jobs:
           # otherwise transitive deps (e.g. RANN via Seurat) are missed.
           seed <- unique(c(loc_names, declared))
           closure <- unique(c(unlist(tools::package_dependencies(seed, db = db, recursive = TRUE)), declared))
-          # Exclude ONLY base-priority packages from the required closure: a
-          # plain installed.packages() also drops toolchain packages installed by
-          # the earlier step (jsonlite/zip/digest/BiocManager) that the app may
-          # need at runtime -> "there is no package called 'X'" after install.
-          base_pkgs <- rownames(installed.packages(priority = "base"))
-          closure <- setdiff(closure, c(loc_names, base_pkgs, basename(list.dirs(lib, recursive = FALSE))))
+          # Base and recommended packages belong to the shell's bundled R. Never
+          # ship them in rlib: on macOS a copy built against the runner's
+          # R.framework can fail on users' Macs. Other packages installed by the
+          # build-helper step (jsonlite/zip/digest/BiocManager) stay available to
+          # the app and must not be dropped from the closure.
+          runtime_pkgs <- rownames(installed.packages(priority = c("base", "recommended")))
+          closure <- setdiff(closure, c(loc_names, runtime_pkgs, basename(list.dirs(lib, recursive = FALSE))))
           if (length(closure)) {
             install.packages(closure, lib = lib, repos = repos, type = "binary",
                              dependencies = FALSE, Ncpus = 2)
@@ -135,6 +201,11 @@ jobs:
 
           missing <- setdiff(loc_names, basename(list.dirs(lib, recursive = FALSE)))
           if (length(missing)) stop("local packages not installed: ", paste(missing, collapse = ", "))
+          bad_runtime <- intersect(basename(list.dirs(lib, recursive = FALSE)), runtime_pkgs)
+          if (length(bad_runtime)) {
+            stop("rlib contains base/recommended packages: ", paste(bad_runtime, collapse = ", "),
+                 ". The shell's bundled R provides them.")
+          }
           cat("rlib packages:", length(list.dirs(lib, recursive = FALSE)), "\n")
 
       - name: Assemble app + manifest.json
@@ -150,6 +221,11 @@ jobs:
           ), file.path(bundle, "app", "app.R"))
 
           pkgs <- as.data.frame(installed.packages(lib.loc = lib))
+          r_version <- paste(R.version$major, R.version$minor, sep = ".")
+          r_abi <- paste(R.version$major, sub("\\..*$", "", R.version$minor), sep = ".")
+          if (!identical(r_version, Sys.getenv("R_VERSION"))) {
+            stop("R_VERSION says ", Sys.getenv("R_VERSION"), " but this R is ", r_version)
+          }
           man <- list(
             schema = 1L,
             id = Sys.getenv("APP_ID"), name = Sys.getenv("APP_NAME"), version = Sys.getenv("VERSION"),
@@ -157,7 +233,10 @@ jobs:
             homepage = Sys.getenv("APP_HOMEPAGE"), license = Sys.getenv("APP_LICENSE"),
             runtime = "r-shiny", entry = "app/app.R",
             platform = "${{ matrix.platform }}",
-            r_version = Sys.getenv("R_VERSION"), min_shell_version = "0.1.0",
+            r_version = r_version, r_abi = r_abi, min_shell_version = "0.1.0",
+            source_repository = Sys.getenv("GITHUB_REPOSITORY"),
+            source_commit = Sys.getenv("SOURCE_COMMIT"), source_ref = Sys.getenv("SOURCE_REF"),
+            source_tag = Sys.getenv("TAG"),
             notes = "Windows: scConvert conversion relies on hdf5r; the CRAN Windows hdf5r bundles HDF5 1.12.x whose H5Fclose can fail at GC (documented scConvert limitation). Tracked separately.",
             packages = lapply(seq_len(nrow(pkgs)), function(i) list(
               name = pkgs$Package[i], version = pkgs$Version[i],
@@ -190,17 +269,81 @@ jobs:
             meta-*.json
 
   release:
-    needs: bundle
-    if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+    needs: [resolve, bundle]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ needs.resolve.outputs.tag }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: artifacts/*.zip
+
+      - name: Build SHA256SUMS from per-platform metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob, json
+          lines = []
+          for path in sorted(glob.glob("artifacts/meta-*.json")):
+              meta = json.load(open(path))
+              lines.append(f"{meta['sha256']}  {meta['file']}")
+          if not lines:
+              raise SystemExit("no meta-*.json artifacts found; refusing to publish an empty SHA256SUMS")
+          with open("artifacts/SHA256SUMS", "w") as fh:
+              fh.write("\n".join(lines) + "\n")
+          PY
+
+      - name: Attach bundles to the tag's Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${TAG:?TAG is empty}"
+          files=(artifacts/*.zip artifacts/SHA256SUMS)
+
+          ERR="$(mktemp)"
+          set +e
+          release_json="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json assets,databaseId 2>"$ERR")"
+          rc=$?
+          set -e
+
+          if [ "$rc" -ne 0 ]; then
+            if grep -qiE 'release not found|HTTP 404' "$ERR"; then
+              if [ "${EVENT_NAME:-}" != "push" ]; then
+                echo "::error::No existing Release is associated with tag $TAG."
+                echo "::error::Manual runs attach to an existing Release; they do not create one."
+                exit 1
+              fi
+              echo "No Release exists for $TAG; creating one for the tag."
+              gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+                --title "$TAG" \
+                --notes "Automated app bundle build for $TAG" \
+                --verify-tag
+              release_json="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+                --json assets,databaseId)"
+            else
+              echo "::error::could not read Release $TAG; refusing to guess"
+              cat "$ERR"
+              exit 1
+            fi
+          fi
+
+          release_id="$(printf '%s' "$release_json" | jq -r '.databaseId')"
+          existing="$(printf '%s' "$release_json" | jq -r '.assets[]?.name')"
+          for f in "${files[@]}"; do
+            n="$(basename "$f")"
+            if printf '%s\n' "$existing" | grep -qxF "$n"; then
+              echo "::error::release asset already exists for $TAG: $n"
+              exit 1
+            fi
+          done
+
+          echo "Attaching to existing Release $release_id for $TAG"
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" "${files[@]}"
