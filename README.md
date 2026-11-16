@@ -166,38 +166,27 @@ source(system.file("tests", "selftest.R", package = "scConvertShiny"))
 Setting `options(scConvertShiny.backend = "stub")` enables a stub backend so
 the whole UI flow can run without scConvert.
 
-## Desktop build (optional)
+## Desktop bundle (ShinyApps)
 
-`.github/workflows/build-desktop.yml` builds unsigned Windows/macOS installers
-with [`shinyelectron`](https://github.com/fentouxungui/shinyelectron) (the
-fork), mirroring the SeuratExplorer setup:
+`.github/workflows/build-app-bundle.yml` builds prebuilt Windows (`win-x64`) and
+macOS (`mac-arm64`) bundles for the ShinyApps desktop store, pinned to R 4.6.1.
+Push a `vX.Y.Z` tag; the workflow builds the bundle, runs a startup smoke test,
+and creates or attaches the artifacts to that tag's GitHub Release:
 
-```
-build-pkg (source tarball) -> build (Windows + macOS installers) -> release (on v* tags)
-```
+- `scconvert-<version>-win-x64-r4.6.zip`
+- `scconvert-<version>-mac-arm64-r4.6.zip`
+- `SHA256SUMS`
+- `build-info.json`
 
-Push a `v*` tag, or run it manually from the Actions tab. Locally:
+`scConvert` is not vendored: each build clones
+[`mianaz/scConvert`](https://github.com/mianaz/scConvert), builds it from source,
+and records its commit and version in `build-info.json`. `SCCONVERT_REF`
+(default `main`) selects the branch or tag; set it to a tag for a reproducible
+build. The configure step needs HDF5, so the macOS job installs Homebrew `hdf5`
+and the workflow installs `hdf5r`.
 
-```r
-pak::pak("fentouxungui/shinyelectron")
-Rscript Build-Desktop-software-by-shinyelectron.R
-```
-
-`app.R` uses `sc_app()`, which returns the Shiny app object (shinyelectron runs
-it) and keeps the 20 GB upload limit.
-
-Icons: the chosen icon (candidate `02_contain_white`) is installed at
-`icons/ico/scConvertShiny.ico` (Windows) and `icons/mac/scConvertShiny.icns`
-plus `.png` (macOS); the build script prefers the `.icns` on macOS. To
-regenerate or pick another, run `python icons/make_icons.py` (needs `pillow`)
-to rebuild the grid in `icons/generated/` (`preview.png` plus per-candidate
-PNG/ICO/1024px), then copy the chosen files into `icons/ico/` and `icons/mac/`.
-
-Note: `scConvert` contains C source and is not on CRAN, so the bundled runtime
-must compile it. It is listed in `dependency/` as `scConvert_*.tar.gz`
-(or `scConvert-*.tar.gz`). Its configure step needs HDF5; the build config
-therefore installs `hdf5r` (which bundles HDF5) as an `extra_package`, and the
-macOS workflow also installs a system HDF5 as a fallback.
+For local development, install `scConvert` from GitHub with the one-click script
+in the Install section; the bundle workflow installs its own copy in CI.
 
 ## Known limitations
 

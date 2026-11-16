@@ -5,11 +5,15 @@
 # (the v5 template uses portable R). Revalidate the macOS bundle on a clean Mac
 # before publishing; migrating to portable R is a separate change.
 #
-# Produces, per platform:  scconvert-<version>-<platform>.zip
+# Produces, per platform:  scconvert-<version>-<platform>-r<abi>.zip
 #   bundle/ +- manifest.json +- app/app.R +- rlib/<Pkg>/
+# Strict v5 artifact format: r<abi> suffix, manifest r_abi, deps-<platform>.json,
+# meta-<platform>.json and a consolidated build-info.json.
 #
 # scConvert and scConvertShiny are built with R CMD build, then installed into
-# bundle/rlib. macOS provides HDF5 for scConvert's configure.
+# bundle/rlib. scConvert is cloned from mianaz/scConvert at SCCONVERT_REF
+# (default main); its commit/version are recorded in meta-*.json/build-info.json.
+# macOS provides HDF5 for scConvert's configure.
 #
 # Release rules follow shinyapps-onboarding v5.5: a v* tag push is the only
 # automatic trigger; a resolve job canonicalizes/validates the tag; a manual
@@ -45,7 +49,11 @@ env:
   APP_HOMEPAGE: "https://github.com/fentouxungui/scConvertShiny"
   APP_LICENSE: "MIT"
   R_VERSION: "4.6.1"
+  # main = latest development; set a tag (e.g. v0.3.0) for a reproducible build.
   SCCONVERT_REF: "main"
+  # on = start the built bundle and request / before uploading; off = skip.
+  SMOKE: "on"
+  SMOKE_TIMEOUT_SEC: "300"
 
 jobs:
   resolve:
@@ -111,7 +119,7 @@ jobs:
 
       - name: Install build helpers
         shell: bash
-        run: Rscript -e 'install.packages(c("jsonlite","zip","digest","BiocManager"), repos="https://cloud.r-project.org")'
+        run: Rscript -e 'install.packages(c("jsonlite","zip","digest","BiocManager","callr","curl","httpuv"), repos="https://cloud.r-project.org")'
 
       - name: Provide HDF5 (macOS)
         if: matrix.platform == 'mac-arm64'
@@ -141,6 +149,11 @@ jobs:
         run: |
           R CMD build --no-build-vignettes --no-manual .
           git clone --depth 1 --branch "${SCCONVERT_REF}" https://github.com/mianaz/scConvert.git scConvert-src
+          SCCONVERT_COMMIT="$(git -C scConvert-src rev-parse HEAD)"
+          SCCONVERT_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' scConvert-src/DESCRIPTION | head -n1)"
+          echo "SCCONVERT_COMMIT=$SCCONVERT_COMMIT" >> "$GITHUB_ENV"
+          echo "SCCONVERT_VERSION=$SCCONVERT_VERSION" >> "$GITHUB_ENV"
+          echo "scConvert ${SCCONVERT_VERSION} @ ${SCCONVERT_COMMIT}"
           R CMD build --no-build-vignettes --no-manual scConvert-src
           ls -1 *.tar.gz
 
@@ -171,6 +184,7 @@ jobs:
           }
           dcfs <- lapply(local_paths, read_desc)
           loc_names <- vapply(dcfs, function(d) d[1, "Package"], character(1))
+          writeLines(loc_names, file.path(getwd(), "local-pkgs.txt"))
           declared <- unique(unlist(lapply(dcfs, function(d) {
             fields <- intersect(c("Depends", "Imports", "LinkingTo"), colnames(d))
             vals <- unlist(lapply(fields, function(f) if (is.na(d[1, f])) "" else d[1, f]))
@@ -226,6 +240,7 @@ jobs:
           if (!identical(r_version, Sys.getenv("R_VERSION"))) {
             stop("R_VERSION says ", Sys.getenv("R_VERSION"), " but this R is ", r_version)
           }
+          local_pkgs <- if (file.exists("local-pkgs.txt")) readLines("local-pkgs.txt", warn = FALSE) else character()
           man <- list(
             schema = 1L,
             id = Sys.getenv("APP_ID"), name = Sys.getenv("APP_NAME"), version = Sys.getenv("VERSION"),
@@ -240,26 +255,127 @@ jobs:
             notes = "Windows: scConvert conversion relies on hdf5r; the CRAN Windows hdf5r bundles HDF5 1.12.x whose H5Fclose can fail at GC (documented scConvert limitation). Tracked separately.",
             packages = lapply(seq_len(nrow(pkgs)), function(i) list(
               name = pkgs$Package[i], version = pkgs$Version[i],
-              path = file.path("rlib", pkgs$Package[i]), source = "cran"))
+              path = file.path("rlib", pkgs$Package[i]),
+              source = if (pkgs$Package[i] %in% local_pkgs) "local" else "cran"))
           )
           jsonlite::write_json(man, file.path(bundle, "manifest.json"), pretty = TRUE, auto_unbox = TRUE)
 
-      - name: Zip + sha256
+      - name: Zip + sha256 + metadata
         shell: Rscript {0}
         run: |
-          out <- sprintf("%s-%s-%s.zip", Sys.getenv("APP_ID"), Sys.getenv("VERSION"), "${{ matrix.platform }}")
-          bundle <- file.path(getwd(), "bundle")
+          root <- getwd()
+          platform <- "${{ matrix.platform }}"
+          r_version <- Sys.getenv("R_VERSION")
+          actual_r <- paste(R.version$major, R.version$minor, sep = ".")
+          if (!identical(actual_r, r_version)) {
+            stop("R_VERSION says ", r_version, " but this R is ", actual_r)
+          }
+          r_abi <- paste(head(strsplit(r_version, ".", fixed = TRUE)[[1]], 2), collapse = ".")
+          out <- sprintf("%s-%s-%s-r%s.zip", Sys.getenv("APP_ID"), Sys.getenv("VERSION"), platform, r_abi)
+
+          bundle <- file.path(root, "bundle")
+          lib <- file.path(bundle, "rlib")
+          pkgs <- as.data.frame(installed.packages(lib.loc = lib), stringsAsFactors = FALSE)
+          lock <- data.frame(package = pkgs$Package, version = pkgs$Version, stringsAsFactors = FALSE)
+          lock <- lock[order(lock$package), ]
+          lock_file <- sprintf("deps-%s.json", platform)
+          jsonlite::write_json(lock, file.path(root, lock_file), pretty = TRUE, auto_unbox = TRUE)
+          lock_sha <- digest::digest(file.path(root, lock_file), algo = "sha256", file = TRUE)
+
           old <- setwd(bundle); on.exit(setwd(old))
           zip::zipr(out, files = list.files(".", all.files = TRUE, no.. = TRUE))
           entries <- utils::unzip(out, list = TRUE)$Name
           if (!any(grepl("^rlib/", entries))) stop("zip is missing rlib/ -- aborting")
+          if (!any(grepl("^app/(app[.]R|ui[.]R)$", entries))) stop("zip is missing app/app.R or app/ui.R -- aborting")
           setwd(old)
           file.rename(file.path(bundle, out), out)
           sha <- digest::digest(out, algo = "sha256", file = TRUE)
-          writeLines(sprintf('{"platform":"%s","file":"%s","sha256":"%s","size":%d}',
-                     "${{ matrix.platform }}", out, sha, file.size(out)),
-                     sprintf("meta-%s.json", "${{ matrix.platform }}"))
-          cat("bundle zip size:", file.size(out), "\n")
+          sz <- file.size(out)
+          cat("bundle zip size (bytes):", sz, "\n")
+
+          meta <- list(
+            schema = 1L, app_id = Sys.getenv("APP_ID"), platform = platform,
+            version = Sys.getenv("VERSION"), file = out, sha256 = sha, size = sz,
+            source_repository = Sys.getenv("GITHUB_REPOSITORY"),
+            source_commit = Sys.getenv("SOURCE_COMMIT"), source_ref = Sys.getenv("SOURCE_REF"),
+            source_tag = Sys.getenv("TAG"),
+            r_version = r_version, r_abi = r_abi,
+            scconvert_ref = Sys.getenv("SCCONVERT_REF"),
+            scconvert_commit = Sys.getenv("SCCONVERT_COMMIT"),
+            scconvert_version = Sys.getenv("SCCONVERT_VERSION"),
+            cran_snapshot = "",
+            strict_version = "on", strict_deps = "off", pandoc_version = NA_character_,
+            dependency_lock = lock_file, dependency_lock_sha256 = lock_sha,
+            package_count = nrow(pkgs)
+          )
+          jsonlite::write_json(meta, file.path(root, sprintf("meta-%s.json", platform)),
+                               pretty = TRUE, auto_unbox = TRUE)
+
+      - name: Smoke test (start the bundle with a clean library)
+        if: ${{ env.SMOKE != 'off' }}
+        timeout-minutes: 12
+        shell: Rscript {0}
+        run: |
+          # Start the built bundle with only rlib + the runner's base R. This
+          # catches startup/UI errors; it is not the installed ShinyApps shell E2E.
+          serve <- function(appdir, lib, port) {
+            .libPaths(c(lib, .Library))
+            if (!identical(normalizePath(.libPaths()[1], winslash = "/", mustWork = TRUE),
+                           normalizePath(lib, winslash = "/", mustWork = TRUE))) {
+              stop("smoke: bundle rlib is not first on .libPaths()")
+            }
+            allowed <- normalizePath(c(lib, .Library), winslash = "/", mustWork = TRUE)
+            actual <- normalizePath(.libPaths(), winslash = "/", mustWork = FALSE)
+            extra <- setdiff(actual, allowed)
+            if (length(extra)) stop("smoke: unexpected library paths: ", paste(extra, collapse = ", "))
+            old <- setwd(appdir); on.exit(setwd(old), add = TRUE)
+            shiny::runApp(".", port = port, host = "127.0.0.1",
+                          launch.browser = FALSE, quiet = TRUE)
+          }
+
+          smoke <- function() {
+            app_id <- Sys.getenv("APP_ID"); ver <- Sys.getenv("VERSION"); plat <- "${{ matrix.platform }}"
+            r_version <- Sys.getenv("R_VERSION")
+            r_abi <- paste(head(strsplit(r_version, ".", fixed = TRUE)[[1]], 2), collapse = ".")
+            zip <- sprintf("%s-%s-%s-r%s.zip", app_id, ver, plat, r_abi)
+            if (!file.exists(zip)) stop("smoke: bundle not found: ", zip)
+            tmp <- tempfile("smoke"); dir.create(tmp)
+            utils::unzip(zip, exdir = tmp)
+            appdir <- file.path(tmp, "app"); lib <- file.path(tmp, "rlib")
+            if (!dir.exists(appdir) || !dir.exists(lib)) stop("smoke: unexpected bundle layout")
+            timeout <- suppressWarnings(as.integer(Sys.getenv("SMOKE_TIMEOUT_SEC", "300")))
+            if (is.na(timeout) || timeout < 30) timeout <- 300
+
+            port <- httpuv::randomPort()
+            proc <- callr::r_bg(serve, args = list(appdir = appdir, lib = lib, port = port),
+                                supervise = TRUE)
+            on.exit(try(proc$kill(), silent = TRUE), add = TRUE)
+
+            url <- sprintf("http://127.0.0.1:%d/", port)
+            deadline <- Sys.time() + timeout
+            out <- character()
+            repeat {
+              out <- c(out, proc$read_output_lines(), proc$read_error_lines())
+              if (!proc$is_alive()) {
+                cat(paste(out, collapse = "\n"), "\n")
+                stop("smoke test FAILED: the app exited before serving a page")
+              }
+              served <- tryCatch({
+                h <- curl::new_handle(connecttimeout = 5L, timeout = 10L)
+                r <- curl::curl_fetch_memory(url, handle = h)
+                r$status_code == 200L && length(r$content) > 0 &&
+                  grepl("<!doctype|<html", rawToChar(r$content), ignore.case = TRUE)
+              }, error = function(e) FALSE)
+              if (isTRUE(served)) break
+              if (Sys.time() >= deadline) {
+                cat(paste(out, collapse = "\n"), "\n")
+                stop("smoke test FAILED: ", url, " did not serve a page within ", timeout, "s")
+              }
+              Sys.sleep(1)
+            }
+            cat("SMOKE OK:", url, "served an HTML page\n")
+          }
+          smoke()
 
       - uses: actions/upload-artifact@v4
         with:
@@ -267,6 +383,7 @@ jobs:
           path: |
             *.zip
             meta-*.json
+            deps-*.json
 
   release:
     needs: [resolve, bundle]
@@ -281,17 +398,47 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Build SHA256SUMS from per-platform metadata
+      - name: Consolidate release metadata
         shell: bash
         run: |
           python3 - <<'PY'
-          import glob, json
-          lines = []
+          import datetime, glob, hashlib, json, os
+
+          metas, deps = {}, {}
           for path in sorted(glob.glob("artifacts/meta-*.json")):
-              meta = json.load(open(path))
-              lines.append(f"{meta['sha256']}  {meta['file']}")
+              platform = os.path.basename(path)[5:-5]
+              metas[platform] = json.load(open(path))
+          for path in sorted(glob.glob("artifacts/deps-*.json")):
+              platform = os.path.basename(path)[5:-5]
+              deps[platform] = json.load(open(path))
+          if not metas:
+              raise SystemExit("no meta-*.json artifacts found; refusing to publish")
+
+          first = next(iter(metas.values()), {})
+          info = {
+              "app_id": first.get("app_id", ""),
+              "version": first.get("version", ""),
+              "source_repository": first.get("source_repository", ""),
+              "source_commit": first.get("source_commit", ""),
+              "scconvert_ref": first.get("scconvert_ref", ""),
+              "scconvert_commit": first.get("scconvert_commit", ""),
+              "scconvert_version": first.get("scconvert_version", ""),
+              "generated_at": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+              "platforms": {
+                  platform: {"metadata": meta, "dependencies": deps.get(platform)}
+                  for platform, meta in metas.items()
+              },
+          }
+          with open("artifacts/build-info.json", "w") as fh:
+              json.dump(info, fh, indent=2)
+              fh.write("\n")
+
+          lines = []
+          for path in sorted(glob.glob("artifacts/*.zip")):
+              digest = hashlib.sha256(open(path, "rb").read()).hexdigest()
+              lines.append(f"{digest}  {os.path.basename(path)}")
           if not lines:
-              raise SystemExit("no meta-*.json artifacts found; refusing to publish an empty SHA256SUMS")
+              raise SystemExit("no bundle zips found; refusing to publish an empty SHA256SUMS")
           with open("artifacts/SHA256SUMS", "w") as fh:
               fh.write("\n".join(lines) + "\n")
           PY
@@ -305,7 +452,7 @@ jobs:
         run: |
           set -euo pipefail
           : "${TAG:?TAG is empty}"
-          files=(artifacts/*.zip artifacts/SHA256SUMS)
+          files=(artifacts/*.zip artifacts/SHA256SUMS artifacts/build-info.json)
 
           ERR="$(mktemp)"
           set +e
